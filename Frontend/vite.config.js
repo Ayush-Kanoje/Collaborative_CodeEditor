@@ -4,13 +4,13 @@ import tailwindcss from "@tailwindcss/vite"
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  optimizeDeps: {
-    include: ['monaco-editor'],
-  },
-  build: {
-    commonjsOptions: {
-      include: [/y-monaco/, /node_modules/],
+  plugins: [ react(), tailwindcss() ],
+  server: {
+    proxy: {
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+      },
     },
   },
 })
