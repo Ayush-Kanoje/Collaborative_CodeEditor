@@ -260,12 +260,10 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: personalText.toString(), username }),
       });
-      const result = await response
-        .json()
-        .catch(() => ({
-          status: "failed",
-          error: "The execution service returned an invalid response.",
-        }));
+      const result = await response.json().catch(() => ({
+        status: "failed",
+        error: "The execution service returned an invalid response.",
+      }));
       setExecutionResult(result);
       setExecutionStatus(
         result.status || (response.ok ? "completed" : "failed"),
