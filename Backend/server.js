@@ -9,7 +9,6 @@ import {
     modifyAwarenessUpdate,
     removeAwarenessStates,
 } from "y-protocols/awareness"
-import { executeCode } from "./executionService.js"
 
 const PRESENCE_ROOM = "collaborator-presence-v1"
 const CODE_ROOM_PREFIX = "personal-code-v1:"
@@ -269,32 +268,6 @@ app.get("/health", (req, res) => {
         message: "ok",
         success: true,
     })
-})
-
-// Keep execution in the existing Docker service; this route only exposes it to
-// the browser and derives the rate-limit identity from a validated username.
-app.post("/execute", async (req, res) => {
-    const username = normalizeUsername(req.body?.username)
-
-    if (!username) {
-        res.status(400).json({
-            status: "failed",
-            error: "A valid username is required.",
-            stdout: "",
-            stderr: "",
-            exitCode: -1,
-            durationMs: 0,
-        })
-        return
-    }
-
-    const result = await executeCode({
-        code: req.body?.code,
-        language: "python",
-        userId: getUserId(username),
-    })
-
-    res.status(result.status === "failed" && result.error?.startsWith("Code must") ? 400 : 200).json(result)
 })
 
 httpServer.listen(3000, () => {

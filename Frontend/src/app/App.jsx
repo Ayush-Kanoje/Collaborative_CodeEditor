@@ -1,4 +1,4 @@
-import "./App.css";
+﻿import "./App.css";
 import { Editor } from "@monaco-editor/react";
 import { MonacoBinding } from "y-monaco";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -63,8 +63,6 @@ function App() {
   const [isViewedCodeDocumentReady, setIsViewedCodeDocumentReady] =
     useState(false);
   const [sessionId] = useState(getSessionId);
-  const [executionStatus, setExecutionStatus] = useState("idle");
-  const [executionResult, setExecutionResult] = useState(null);
   const bindingRef = useRef(null);
 
   const destroyBinding = useCallback((bindingRecord = bindingRef.current) => {
@@ -108,7 +106,6 @@ function App() {
   const isDocumentReady = isViewing
     ? isViewedCodeDocumentReady
     : isCodeDocumentReady;
-  const isExecuting = executionStatus === "running";
 
   useEffect(() => {
     if (!personalDocument || !username) {
@@ -250,34 +247,6 @@ function App() {
 
   useEffect(() => () => destroyBinding(), [destroyBinding]);
 
-  const handleExecute = useCallback(async () => {
-    if (isExecuting || isViewing || !personalText) return;
-    setExecutionStatus("running");
-    setExecutionResult(null);
-    try {
-      const response = await fetch("/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: personalText.toString(), username }),
-      });
-      const result = await response.json().catch(() => ({
-        status: "failed",
-        error: "The execution service returned an invalid response.",
-      }));
-      setExecutionResult(result);
-      setExecutionStatus(
-        result.status || (response.ok ? "completed" : "failed"),
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to reach the execution service.";
-      setExecutionResult({ status: "failed", error: message });
-      setExecutionStatus("failed");
-    }
-  }, [isExecuting, isViewing, personalText, username]);
-
   const handleJoin = (event) => {
     event.preventDefault();
     const nextUsername = normalizeUsername(
@@ -368,18 +337,9 @@ function App() {
         <header className="bg-neutral-900 px-4 py-2 text-sm text-gray-300 border-b border-neutral-700 flex items-center justify-between gap-4">
           <span>
             {isViewing
-              ? `${selectedUser.username}'s code (read-only)`
+              ? `${selectedUser.username}${"'"}s code (read-only)`
               : `Your private editor — ${username}`}
           </span>
-          {!isViewing && (
-            <button
-              onClick={handleExecute}
-              disabled={!isCodeDocumentReady || isExecuting}
-              className="px-3 py-1 rounded bg-amber-50 text-gray-950 font-bold disabled:opacity-50"
-            >
-              {isExecuting ? "Executing…" : "Execute"}
-            </button>
-          )}
         </header>
         <div className="flex-1 min-h-0">
           {isDocumentReady ? (
@@ -396,44 +356,12 @@ function App() {
             <div className="h-full flex items-center justify-center text-gray-300">
               Loading{" "}
               {isViewing
-                ? `${selectedUser.username}'s code`
+                ? `${selectedUser.username}${"'"}s code`
                 : "your personal workspace"}
               …
             </div>
           )}
         </div>
-        {(executionResult || isExecuting) && (
-          <section
-            className="border-t border-neutral-700 bg-neutral-900 p-3 text-sm text-gray-200 max-h-56 overflow-auto"
-            aria-live="polite"
-          >
-            <div className="font-semibold">
-              Output{" "}
-              {isExecuting
-                ? "(executing…)"
-                : `(${executionResult.status || executionStatus})`}
-            </div>
-            {!isExecuting && (
-              <div className="text-gray-400">
-                Exit code: {executionResult.exitCode ?? "—"} · Time:{" "}
-                {executionResult.durationMs ?? "—"} ms
-              </div>
-            )}
-            {executionResult?.stdout && (
-              <pre className="mt-2 whitespace-pre-wrap text-green-200">
-                {executionResult.stdout}
-              </pre>
-            )}
-            {executionResult?.stderr && (
-              <pre className="mt-2 whitespace-pre-wrap text-red-200">
-                {executionResult.stderr}
-              </pre>
-            )}
-            {executionResult?.error && (
-              <p className="mt-2 text-red-200">{executionResult.error}</p>
-            )}
-          </section>
-        )}
       </section>
     </main>
   );
