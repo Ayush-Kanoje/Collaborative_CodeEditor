@@ -1,2 +1,71 @@
+# Environment files (security: never include in image)
 .env
-node_modules
+.env.*
+!.env.example
+
+# Dependencies (reinstalled in container)
+node_modules/
+*/node_modules/
+Frontend/node_modules/
+Backend/node_modules/
+
+# Build artifacts
+Frontend/dist/
+Backend/public/
+
+# Testing
+Backend/test/
+Backend/test-env-config.js
+Backend/manual-test-env.sh
+Backend/TESTING.md
+Frontend/test/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+Backend/README-ENV-CONFIG.md
+Backend/IMPLEMENTATION_COMPLETE.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Development files
+docker-compose.yml
+docker-compose.*.yml
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

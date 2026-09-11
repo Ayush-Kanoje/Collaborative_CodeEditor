@@ -1,6 +1,6 @@
 # Node dependencies
 node_modules/
-
+.
 # Environment files
 .env
 .env.*
@@ -19,7 +19,7 @@ yarn-error.log*
 
 # Local config
 *.local
-
+*.md
 # OS/editor files
 .DS_Store
 .vscode/

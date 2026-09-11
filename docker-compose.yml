@@ -5,3 +5,63 @@ services:
       dockerfile: dockerfile
     ports:
       - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CORS_ORIGIN=http://localhost:5173
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost
+      - CORS_METHODS=GET,POST,OPTIONS
+      - CORS_ALLOW_HEADERS=Content-Type,Authorization
+      - PRESENCE_REMOVAL_GRACE_MS=20000
+      - TRACE_MAX_OUTPUT_BYTES=1000000
+      - TRACE_TIMEOUT_MS=5000
+      - TRACE_MAX_CONCURRENCY=4
+      - TRACE_CPU_SECONDS=2
+      - SHUTDOWN_TIMEOUT_MS=10000
+      - HEALTH_CHECK_ENABLED=true
+      - LOG_LEVEL=info
+      - LOG_REQUESTS=false
+      # Redis configuration (optional - enables horizontal scaling)
+      # Uncomment and set to enable Redis adapter for Socket.IO
+      # - REDIS_HOST=redis
+      # - REDIS_PORT=6379
+      # - REDIS_PASSWORD=
+      # - REDIS_DB=0
+      # Yjs Persistence configuration (optional)
+      # Uncomment to enable document persistence
+      # - YJS_PERSISTENCE_ENABLED=true
+      # - YJS_STORAGE_BACKEND=s3
+      # S3 configuration (for Yjs persistence)
+      # - AWS_REGION=us-east-1
+      # - S3_BUCKET=my-bucket
+      # - S3_ENDPOINT=
+      # DynamoDB configuration (for Yjs persistence)
+      # - DYNAMODB_TABLE=yjs-documents
+      # - DYNAMODB_TTL_DAYS=30
+    # Uncomment to use external Redis for scaling
+    # depends_on:
+    #   - redis
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 15s
+    # restart: unless-stopped
+
+# Uncomment to add Redis service for horizontal scaling
+# redis:
+#   image: redis:7-alpine
+#   ports:
+#     - "6379:6379"
+#   volumes:
+#     - redis_data:/data
+#   command: redis-server --appendonly yes
+#   healthcheck:
+#     test: ["CMD", "redis-cli", "ping"]
+#     interval: 10s
+#     timeout: 5s
+#     retries: 3
+
+# volumes:
+#   redis_data:

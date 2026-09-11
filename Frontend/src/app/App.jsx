@@ -1,11 +1,11 @@
-﻿import "./App.css";
-import { Editor } from "@monaco-editor/react";
-import { MonacoBinding } from "y-monaco";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as Y from "yjs";
-import { SocketIOProvider } from "y-socket.io";
+import "./App.css";
+import { useEffect, useState } from "react";
+import { CollaborativeEditor } from "../components/CollaborativeEditor";
+import { ExplainCodePanel } from "../components/ExplainCodePanel";
+import { UserSidebar } from "../components/UserSidebar";
+import { useCollaboration } from "../hooks/useCollaboration";
+import { usePresence } from "../hooks/usePresence";
 
-const PRESENCE_ROOM = "collaborator-presence-v1";
 const USERNAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u;
 
 function normalizeUsername(value) {
@@ -27,177 +27,49 @@ function getInitialUsername() {
   );
 }
 
+/**
+ * Generate a secure session ID
+ * Uses Web Crypto API for secure random generation
+ * Falls back to combined timestamp+random if crypto not available
+ * Fails loudly if neither is available (security requirement)
+ */
+function generateSecureSessionId() {
+  // Prefer Web Crypto API (most secure)
+  if (window.crypto?.getRandomValues) {
+    const array = new Uint8Array(16);
+    window.crypto.getRandomValues(array);
+    return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Fallback: use randomUUID if available
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  // No secure random available - this is a security issue
+  console.error("Web Crypto API not available. Session IDs may not be secure.");
+  // Still generate something, but this should trigger a warning in production
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 function getSessionId() {
   const key = "collaborative-editor-session-id";
   const saved = window.sessionStorage.getItem(key);
   if (saved) return saved;
-  const sessionId =
-    window.crypto?.randomUUID?.() ||
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  
+  const sessionId = generateSecureSessionId();
   window.sessionStorage.setItem(key, sessionId);
   return sessionId;
-}
-
-function getCollaborators(awareness) {
-  const collaborators = new Map();
-  awareness.getStates().forEach((state) => {
-    if (state.user?.username && state.user?.sessionId) {
-      collaborators.set(state.user.sessionId, {
-        ...state.user,
-        userId: state.user.userId || getUserId(state.user.username),
-      });
-    }
-  });
-  return [...collaborators.values()].sort((a, b) =>
-    a.username.localeCompare(b.username),
-  );
 }
 
 function App() {
   const [username, setUsername] = useState(getInitialUsername);
   const [usernameError, setUsernameError] = useState("");
-  const [users, setUsers] = useState([]);
-  const [editor, setEditor] = useState(null);
-  const [isCodeDocumentReady, setIsCodeDocumentReady] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [isViewedCodeDocumentReady, setIsViewedCodeDocumentReady] =
-    useState(false);
   const [sessionId] = useState(getSessionId);
-  const bindingRef = useRef(null);
-
-  const destroyBinding = useCallback((bindingRecord = bindingRef.current) => {
-    if (!bindingRecord || bindingRecord.destroyed) return;
-    bindingRecord.destroyed = true;
-    if (bindingRef.current === bindingRecord) bindingRef.current = null;
-
-    // MonacoBinding already destroys itself from the model's onWillDispose
-    // callback. Do not call destroy() again after the model has gone away;
-    // y-monaco's second unobserve() emits the Yjs warning shown in the console.
-    const modelDisposed = bindingRecord.model?.isDisposed?.() ?? false;
-    bindingRecord.modelDisposeSubscription?.dispose();
-    if (!modelDisposed) bindingRecord.binding.destroy();
-  }, []);
-
-  const personalDocument = useMemo(
-    () => (username ? new Y.Doc() : null),
-    [username],
-  );
-  const presenceDocument = useMemo(
-    () => (username ? new Y.Doc() : null),
-    [username],
-  );
-  const personalText = useMemo(
-    () => personalDocument?.getText("monaco") || null,
-    [personalDocument],
-  );
-  const viewedDocument = useMemo(
-    () => (selectedUser ? new Y.Doc() : null),
-    [selectedUser],
-  );
-  const viewedText = useMemo(
-    () => viewedDocument?.getText("monaco") || null,
-    [viewedDocument],
-  );
-  const isViewing = Boolean(selectedUser);
-  const activeText = isViewing ? viewedText : personalText;
-  const activeWorkspaceId = isViewing
-    ? selectedUser.userId
-    : getUserId(username);
-  const isDocumentReady = isViewing
-    ? isViewedCodeDocumentReady
-    : isCodeDocumentReady;
-
-  useEffect(() => {
-    if (!personalDocument || !username) {
-      setIsCodeDocumentReady(false);
-      return undefined;
-    }
-    setIsCodeDocumentReady(false);
-    const provider = new SocketIOProvider(
-      "/",
-      getPersonalCodeRoom(username),
-      personalDocument,
-      {
-        autoConnect: false,
-        disableBc: true,
-        auth: { username, sessionId, access: "owner" },
-      },
-    );
-    const handleSync = (synced) => synced && setIsCodeDocumentReady(true);
-    provider.on("sync", handleSync);
-    provider.connect();
-    return () => {
-      // Provider teardown may remove Yjs observers. Dispose the binding first.
-      destroyBinding();
-      provider.off("sync", handleSync);
-      provider.destroy();
-    };
-  }, [destroyBinding, personalDocument, sessionId, username]);
-
-  useEffect(() => {
-    if (!viewedDocument || !selectedUser || !username) {
-      setIsViewedCodeDocumentReady(false);
-      return undefined;
-    }
-    setIsViewedCodeDocumentReady(false);
-    const provider = new SocketIOProvider(
-      "/",
-      getPersonalCodeRoom(selectedUser.userId),
-      viewedDocument,
-      {
-        autoConnect: false,
-        disableBc: true,
-        auth: { username, sessionId, access: "view" },
-      },
-    );
-    const handleSync = (synced) => synced && setIsViewedCodeDocumentReady(true);
-    provider.on("sync", handleSync);
-    provider.connect();
-    return () => {
-      // Provider teardown may remove Yjs observers. Dispose the binding first.
-      destroyBinding();
-      provider.off("sync", handleSync);
-      provider.destroy();
-    };
-  }, [destroyBinding, selectedUser, sessionId, username, viewedDocument]);
-
-  useEffect(() => {
-    if (!presenceDocument || !username) {
-      setUsers([]);
-      return undefined;
-    }
-    const provider = new SocketIOProvider(
-      "/",
-      PRESENCE_ROOM,
-      presenceDocument,
-      {
-        autoConnect: false,
-        disableBc: true,
-        auth: { username, sessionId, access: "presence" },
-      },
-    );
-    const updateUsers = () => setUsers(getCollaborators(provider.awareness));
-    provider.awareness.setLocalStateField("user", { username, sessionId });
-    provider.awareness.on("change", updateUsers);
-    provider.connect();
-    updateUsers();
-    return () => {
-      provider.awareness.setLocalStateField("user", null);
-      provider.awareness.off("change", updateUsers);
-      provider.destroy();
-    };
-  }, [presenceDocument, sessionId, username]);
-
-  const handleEditorMount = useCallback((instance) => {
-    if (!instance || instance.isDisposed?.()) return;
-    const model = instance.getModel?.();
-    if (!model || model.isDisposed?.()) return;
-    setEditor(instance);
-  }, []);
-
-  const handleEditorUnmount = useCallback(() => {
-    setEditor(null);
-  }, []);
+  const [showExplainer, setShowExplainer] = useState(false);
+  const users = usePresence({ username, sessionId, getUserId });
+  const { isViewing, isDocumentReady, getEditorContent, handleEditorMount, handleEditorUnmount, resetEditorForWorkspaceChange } = useCollaboration({ username, sessionId, selectedUser, getPersonalCodeRoom, getUserId });
 
   useEffect(() => {
     if (
@@ -205,47 +77,9 @@ function App() {
       users.some((user) => user.userId === selectedUser.userId)
     )
       return;
-    destroyBinding();
-    setEditor(null);
-    setIsViewedCodeDocumentReady(false);
+    resetEditorForWorkspaceChange();
     setSelectedUser(null);
-  }, [destroyBinding, selectedUser, users]);
-
-  useEffect(() => {
-    if (!editor || !activeText || !isDocumentReady) return undefined;
-
-    if (editor.isDisposed?.()) return undefined;
-    const model = editor.getModel?.();
-    if (!model || model.isDisposed?.()) return undefined;
-
-    destroyBinding();
-    // Re-check after disposing the previous binding. This keeps a stale
-    // editor/model pair from reaching MonacoBinding during a keyed remount.
-    if (
-      editor.isDisposed?.() ||
-      editor.getModel?.() !== model ||
-      model.isDisposed?.()
-    )
-      return undefined;
-
-    const bindingRecord = {
-      binding: new MonacoBinding(activeText, model, new Set([editor])),
-      model,
-      destroyed: false,
-      modelDisposeSubscription: null,
-    };
-    // MonacoBinding also destroys itself when this model is disposed. Mark the
-    // record as closed at that point so React's later effect cleanup cannot
-    // call its Yjs unobserve/off cleanup a second time.
-    bindingRecord.modelDisposeSubscription = model.onWillDispose(() => {
-      bindingRecord.destroyed = true;
-      if (bindingRef.current === bindingRecord) bindingRef.current = null;
-    });
-    bindingRef.current = bindingRecord;
-    return () => destroyBinding(bindingRecord);
-  }, [activeText, activeWorkspaceId, destroyBinding, editor, isDocumentReady]);
-
-  useEffect(() => () => destroyBinding(), [destroyBinding]);
+  }, [resetEditorForWorkspaceChange, selectedUser, users]);
 
   const handleJoin = (event) => {
     event.preventDefault();
@@ -268,10 +102,7 @@ function App() {
   };
 
   const selectWorkspace = (user) => {
-    // Tear down before changing documents so bindings cannot overlap.
-    destroyBinding();
-    setEditor(null);
-    setIsViewedCodeDocumentReady(false);
+    resetEditorForWorkspaceChange();
     setSelectedUser(user);
   };
 
@@ -300,69 +131,16 @@ function App() {
       </main>
     );
 
-  const otherUsers = users.filter(
-    (user) => user.userId !== getUserId(username),
-  );
   return (
     <main className="h-screen w-full bg-gray-950 flex gap-4 p-4">
-      <aside className="h-full w-1/4 bg-amber-50 rounded-lg overflow-auto">
-        <h2 className="text-2xl font-bold p-4 border-b border-gray-300">
-          Users
-        </h2>
-        <ul className="p-4 space-y-2">
-          <li>
-            <button
-              onClick={() => selectWorkspace(null)}
-              className={`w-full p-2 rounded text-left ${!selectedUser ? "bg-gray-800 text-white" : "bg-white text-gray-900"}`}
-            >
-              Your code ({username})
-            </button>
-          </li>
-          {otherUsers.map((user) => (
-            <li key={user.sessionId}>
-              <button
-                onClick={() => selectWorkspace(user)}
-                className={`w-full p-2 rounded text-left ${selectedUser?.userId === user.userId ? "bg-gray-800 text-white" : "bg-white text-gray-900"}`}
-              >
-                View {user.username}
-              </button>
-            </li>
-          ))}
-          {!otherUsers.length && (
-            <li className="text-sm text-gray-600">No other users connected.</li>
-          )}
-        </ul>
-      </aside>
-      <section className="w-3/4 bg-neutral-800 rounded-lg overflow-hidden flex flex-col min-h-0">
-        <header className="bg-neutral-900 px-4 py-2 text-sm text-gray-300 border-b border-neutral-700 flex items-center justify-between gap-4">
-          <span>
-            {isViewing
-              ? `${selectedUser.username}${"'"}s code (read-only)`
-              : `Your private editor — ${username}`}
-          </span>
-        </header>
-        <div className="flex-1 min-h-0">
-          {isDocumentReady ? (
-            <Editor
-              key={isViewing ? `view-${selectedUser.userId}` : "personal"}
-              height="100%"
-              defaultLanguage="python"
-              theme="vs-dark"
-              onMount={handleEditorMount}
-              onUnmount={handleEditorUnmount}
-              options={{ readOnly: isViewing, domReadOnly: isViewing }}
-            />
-          ) : (
-            <div className="h-full flex items-center justify-center text-gray-300">
-              Loading{" "}
-              {isViewing
-                ? `${selectedUser.username}${"'"}s code`
-                : "your personal workspace"}
-              …
-            </div>
-          )}
-        </div>
-      </section>
+      <UserSidebar username={username} users={users} selectedUser={selectedUser} onSelectWorkspace={selectWorkspace} getUserId={getUserId} />
+      <CollaborativeEditor isViewing={isViewing} selectedUser={selectedUser} username={username} isDocumentReady={isDocumentReady} onMount={handleEditorMount} onUnmount={handleEditorUnmount} onExplain={() => setShowExplainer(true)} />
+      {showExplainer && (
+        <ExplainCodePanel
+          code={getEditorContent()}
+          onClose={() => setShowExplainer(false)}
+        />
+      )}
     </main>
   );
 }
